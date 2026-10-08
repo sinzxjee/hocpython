@@ -84,5 +84,9 @@ test('API generation, hints, grading, AI schema contract, validation and access 
   const at = (await post('tests', { id: ae.id })).value.tests;
   const ag = await post('grade', { id: ae.id, code: 'def is_prime(n): pass', results: at.map(() => ({ passed: false })) });
   assert.equal(ag.value.source, 'ai'); assert.equal(ag.value.issues[0].line, 2);
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { type: 'insufficient_quota', code: 'credit_balance_exhausted' } }), { status: 429 });
+  const quota = await post('hint', { id: ae.id, level: 0 });
+  assert.equal(quota.status, 429);
+  assert.match(quota.value.error, /credit/);
 });
 
