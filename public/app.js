@@ -277,9 +277,9 @@ $('download').onclick = () => {
   const url = URL.createObjectURL(new Blob([current().code], { type: 'text/x-python;charset=utf-8' }));
   const a = document.createElement('a'); a.href = url; a.download = 'main.py'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
-let theme = localStorage.getItem('hocpython:theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+let theme = localStorage.getItem('hocpython:theme:v2') || 'light';
 document.documentElement.dataset.theme = theme;
-$('theme').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; localStorage.setItem('hocpython:theme', theme); };
+$('theme').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; localStorage.setItem('hocpython:theme:v2', theme); };
 async function init() {
   render();
   try {
@@ -291,5 +291,4 @@ async function init() {
   setInterval(updateTimer, 1000);
 }
 init();
-
 
