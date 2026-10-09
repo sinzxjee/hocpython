@@ -123,6 +123,7 @@ function render() {
   $('feedback').hidden = true;
   $('exam-result').hidden = true;
   showStats();
+  if(home){renderDashboard();return;}
   if (!e) return;
   $('problem-meta').textContent = state.topic === 'exam' ? 'CÂU ' + String(s.index + 1).padStart(2, '0') + ' / ' + topicData[e.topic].title : 'BÀI TẬP / ' + topicData[e.topic].title;
   $('problem-source').textContent = 'Bài ' + String(e.exerciseNumber || 1).padStart(2, '0') + ' / 10';
