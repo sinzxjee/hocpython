@@ -20,7 +20,7 @@ function restore() {
 }
 const state = restore();
 if (!topicData[state.topic]) state.topic = 'home';
-let busy = false, cancelRunner = null, toastTimeout, saveTimeout;
+let busy = false, cancelRunner = null, toastTimeout, saveTimeout, editorInstance = null, monacoPromise = null, editorFontSize = 17, syncingEditor = false;
 const escape = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
@@ -38,6 +38,8 @@ function setBusy(value, label = '') {
   ['generate', 'run', 'submit', 'submit-all', 'hint', 'reset', 'exercise-number'].forEach(id => $(id).disabled = value);
   document.querySelectorAll('[data-topic]').forEach(button => button.disabled = value);
   $('code').disabled = value || Boolean(session()?.ended);
+  editorInstance?.updateOptions({ readOnly: value || Boolean(session()?.ended) });
+  $('workspace').classList.toggle('is-loading', value && state.topic !== 'home' && !session()?.items?.length);
   if (label) $('runtime-status').textContent = label;
   if (!value) {
     $('runtime-status').textContent = 'Python / sẵn sàng khi chạy';
@@ -66,6 +68,74 @@ function updateLines() {
   $('code-info').textContent = n + ' dòng';
   $('line-numbers').scrollTop = $('code').scrollTop;
 }
+function loadMonaco() {
+  if (editorInstance) return Promise.resolve(editorInstance);
+  if (monacoPromise) return monacoPromise;
+  monacoPromise = new Promise((resolve, reject) => {
+    const version = '0.52.2';
+    const base = 'https://cdn.jsdelivr.net/npm/monaco-editor@' + version + '/min/vs';
+    const script = document.createElement('script'); script.src = base + '/loader.js'; script.crossOrigin = 'anonymous';
+    script.onerror = () => reject(new Error('Không tải được Monaco; đang dùng editor cơ bản.'));
+    script.onload = () => {
+      window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob(["self.MonacoEnvironment={baseUrl:'" + base.replace(/\/vs$/, '') + "'};importScripts('" + base + "/base/worker/workerMain.js');"], { type: 'text/javascript' })) };
+      window.require.config({ paths: { vs: base } });
+      window.require(['vs/editor/editor.main', 'vs/basic-languages/python/python.contribution'], () => {
+        const host = $('monaco-editor');
+        editorInstance = window.monaco.editor.create(host, {
+          value: $('code').value, language: 'python', theme: theme === 'dark' ? 'vs-dark' : 'vs',
+          automaticLayout: true, fontSize: editorFontSize, fontFamily: 'Consolas, "Courier New", monospace',
+          minimap: { enabled: false }, scrollBeyondLastLine: false, tabSize: 4, insertSpaces: true,
+          lineNumbers: 'on', roundedSelection: false, renderLineHighlight: 'line', wordWrap: 'off',
+          suggestOnTriggerCharacters: true, quickSuggestions: true, accessibilitySupport: 'auto'
+        });
+        host.hidden = false; $('code').classList.add('monaco-active'); $('line-numbers').hidden = true;
+        $('editor-engine').textContent = 'Monaco · Python';
+        $('editor-message').textContent = 'Gợi ý cú pháp · Tab: 4 dấu cách · Ctrl/⌘ + Enter: chạy';
+        window.monaco.languages.registerCompletionItemProvider('python', {
+          provideCompletionItems(model, position) {
+            const word = model.getWordUntilPosition(position), range = new window.monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+            const values = ['print', 'input', 'int', 'float', 'str', 'len', 'sum', 'max', 'min', 'range', 'append', 'def', 'return', 'if', 'elif', 'else', 'for', 'while'];
+            return { suggestions: values.map(label => ({ label, kind: window.monaco.languages.CompletionItemKind.Function, insertText: label, range })) };
+          }
+        });
+        editorInstance.onDidChangeModelContent(() => {
+          if (syncingEditor) return;
+          $('code').value = editorInstance.getValue(); $('code').dispatchEvent(new Event('input'));
+          basicDiagnostics();
+        });
+        editorInstance.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.Enter, () => run());
+        editorInstance.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KEY_S, () => save());
+        basicDiagnostics(); resolve(editorInstance);
+      }, reject);
+    };
+    document.head.appendChild(script);
+  }).catch(error => { $('editor-engine').textContent = 'Editor cơ bản'; $('editor-message').textContent = error.message; throw error; });
+  return monacoPromise;
+}
+function basicDiagnostics() {
+  if (!editorInstance || !window.monaco) return;
+  const text = editorInstance.getValue(), stack = [], pairs = { ')': '(', ']': '[', '}': '{' }, markers = [];
+  let quote = '', escaped = false, comment = false, line = 1, column = 0;
+  for (const char of text) {
+    column++;
+    if (char === '\n') { line++; column = 0; comment = false; if (quote === "'") quote = ''; continue; }
+    if (comment) continue;
+    if (quote) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === quote) quote = ''; continue; }
+    if (char === '#') { comment = true; continue; }
+    if (char === '"' || char === "'") { quote = char; continue; }
+    if ('([{'.includes(char)) stack.push({ char, line, column });
+    else if (pairs[char]) { const open = stack.pop(); if (!open || open.char !== pairs[char]) markers.push({ startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column + 1, message: 'Dấu ngoặc chưa khớp.', severity: window.monaco.MarkerSeverity.Error }); }
+  }
+  if (quote) markers.push({ startLineNumber: line, startColumn: Math.max(1, column), endLineNumber: line, endColumn: Math.max(2, column + 1), message: 'Dấu nháy chưa đóng.', severity: window.monaco.MarkerSeverity.Error });
+  if (stack.length) { const open = stack[stack.length - 1]; markers.push({ startLineNumber: open.line, startColumn: open.column, endLineNumber: open.line, endColumn: open.column + 1, message: 'Thiếu dấu đóng ngoặc.', severity: window.monaco.MarkerSeverity.Error }); }
+  window.monaco.editor.setModelMarkers(editorInstance.getModel(), 'hocpython-basic-lint', markers);
+}
+function renderDiscussion(item) {
+  const panel = $('discussion'); panel.hidden = !item || state.topic === 'exam'; if (!item || state.topic === 'exam') return;
+  $('discussion-input').value = '';
+  let entries = []; try { entries = JSON.parse(localStorage.getItem('hocpython:discussion:v1:' + item.exercise.id) || '[]'); } catch {}
+  $('discussion-list').innerHTML = entries.length ? entries.map(entry => '<article class="discussion-entry"><time>' + escape(new Date(entry.at).toLocaleString('vi-VN')) + '</time>' + escape(entry.text) + '</article>').join('') : '<p class="discussion-empty">Chưa có ghi chú. Bạn có thể lưu cách làm hoặc câu hỏi cho riêng mình.</p>';
+}
 function renderFeedback(item) {
   const f = item?.grade;
   $('feedback').hidden = !f;
@@ -83,6 +153,7 @@ function renderFeedback(item) {
 function renderTests(item) {
   const results = item?.results || [];
   $('checks').hidden = !results.length;
+  $('test-metrics').textContent = results.length ? 'Thời gian chạy: ' + (item.runtimeMs ?? '—') + ' ms · Bộ nhớ: không đo được' : '';
   $('test-results').innerHTML = results.map((r, i) => '<details class="check"><summary>' + (r.passed ? '✓' : '×') + ' Test ' + String(i + 1).padStart(2, '0') + ' / ' + (r.passed ? 'đạt' : 'chưa đạt') + '</summary><pre>' +
     escape('Đầu vào: ' + (item.tests?.[i]?.expression || item.tests?.[i]?.input || '(rỗng)') + '\nMong đợi: ' + (item.tests?.[i]?.expected || '') + '\nThực tế: ' + r.stdout + (r.error ? '\nLỗi: ' + r.error : '')) + '</pre></details>').join('');
 }
@@ -120,6 +191,7 @@ function render() {
   $('exam-bar').hidden = home || state.topic !== 'exam' || !s;
   $('empty').hidden = home || Boolean(e) || state.topic === 'exam';
   $('workspace').hidden = home || !e;
+  $('discussion').hidden = home || !e || state.topic === 'exam';
   $('feedback').hidden = true;
   $('exam-result').hidden = true;
   showStats();
@@ -131,8 +203,10 @@ function render() {
   $('input-format').textContent = e.inputFormat; $('output-format').textContent = e.outputFormat;
   $('constraints').textContent = e.constraints;
   $('rubric').innerHTML = e.rubric.map(r => '<li>' + escape(r) + '</li>').join('');
-  $('examples').innerHTML = e.examples.map((x, i) => '<div class="example"><h3>Ví dụ ' + (i + 1) + '</h3><div class="example-grid"><div><small>đầu vào / lời gọi</small><pre>' + escape(x.input) + '</pre></div><div><small>đầu ra</small><pre>' + escape(x.output) + '</pre></div></div><p>' + escape(x.explanation) + '</p></div>').join('');
+  $('examples').innerHTML = '<p class="eyebrow">VÍ DỤ CÔNG KHAI</p>' + e.examples.map((x, i) => '<div class="example"><h3>Ví dụ ' + (i + 1) + '</h3><div class="example-grid"><div><small>đầu vào / lời gọi</small><pre>' + escape(x.input) + '</pre></div><div><small>đầu ra</small><pre>' + escape(x.output) + '</pre></div></div><p>' + escape(x.explanation) + '</p></div>').join('');
   $('code').value = item.code; $('code').disabled = busy || Boolean(s.ended); updateLines();
+  if (editorInstance && editorInstance.getValue() !== item.code) { syncingEditor = true; editorInstance.setValue(item.code); syncingEditor = false; }
+  if (!editorInstance && !$('code').disabled) loadMonaco().catch(() => {});
   $('stdin').value = item.stdin;
   $('stdin').placeholder = e.mode === 'function' ? 'is_prime(7)' : 'Dữ liệu cho input(), mỗi giá trị một dòng';
   $('stdin-note').textContent = e.mode === 'function' ? 'lời gọi hàm, ví dụ is_prime(7)' : 'mỗi input() nhận một dòng';
@@ -143,7 +217,7 @@ function render() {
   const hintCount = item.exercise.hintCount || 0;
   $('hint').textContent = item.hints.length >= hintCount ? 'Đã mở hết gợi ý' : 'Mở gợi ý ' + (item.hints.length + 1) + ' / ' + hintCount;
   $('hint').disabled = busy || Boolean(s.ended) || item.hints.length >= hintCount;
-  renderFeedback(item); renderTests(item);
+  renderFeedback(item); renderTests(item); renderDiscussion(item);
   if (state.topic === 'exam') {
     $('question-tabs').innerHTML = s.items.map((q, i) => '<button data-index="' + i + '" class="' + (i === s.index ? 'active' : '') + '">Câu ' + (i + 1) + (q.grade ? ' ✓' : '') + '</button>').join('');
     $('question-tabs').querySelectorAll('button').forEach(b => b.onclick = () => { if (busy) return; s.index = Number(b.dataset.index); save(); render(); });
@@ -178,12 +252,14 @@ function runPython(code, tests, mode) {
     }
     cancelRunner = () => finish(new Error('Đã dừng chạy code.'));
     $('cancel-run').hidden = false;
+    let startedAt = 0;
     $('runtime-status').textContent = 'Đang tải Python…';
     worker.onmessage = ({ data }) => {
       if (data.type === 'ready') {
+        startedAt = performance.now();
         clearTimeout(timeout); timeout = setTimeout(() => finish(new Error('Code chạy quá 8 giây. Kiểm tra vòng lặp hoặc giảm dữ liệu.')), 8000);
         $('runtime-status').textContent = 'Đang chạy…';
-      } else if (data.type === 'result') { $('runtime-status').textContent = 'Python / đã chạy'; finish(null, data.results); }
+      } else if (data.type === 'result') { $('runtime-status').textContent = 'Python / đã chạy'; data.results.runtimeMs = Math.max(0, Math.round(performance.now() - startedAt)); finish(null, data.results); }
       else if (data.type === 'error') finish(new Error(data.error));
     };
     worker.onerror = () => finish(new Error('Không khởi tạo được Python worker. Kiểm tra mạng rồi thử lại.'));
@@ -197,18 +273,19 @@ async function run() {
   try {
     const test = { input: item.exercise.mode === 'script' ? $('stdin').value : '', expression: item.exercise.mode === 'function' ? $('stdin').value : '', expected: '' };
     if (item.exercise.mode === 'function' && !test.expression.trim()) throw new Error('Nhập lời gọi hàm vào ô đầu vào để chạy thử.');
-    const [result] = await runPython(item.code, [test], item.exercise.mode);
+    const results = await runPython(item.code, [test], item.exercise.mode), [result] = results;
+    item.runtimeMs = results.runtimeMs;
     item.output = result.error || result.stdout || '(Chương trình không in kết quả)';
-    item.outputError = Boolean(result.error); save(); render();
+    item.outputError = Boolean(result.error); save(); render(); $('runtime-status').textContent = 'Thời gian chạy: ' + item.runtimeMs + ' ms';
   } catch (error) { item.output = error.message; item.outputError = true; save(); render(); }
-  finally { setBusy(false); }
+  finally { setBusy(false); if (item?.runtimeMs != null) $('runtime-status').textContent = 'Thời gian chạy: ' + item.runtimeMs + ' ms'; }
 }
 async function gradeItem(item) {
   if (!item.code.trim()) throw new Error('Bạn chưa viết code.');
   if (item.gradedCode === item.code && item.grade) return item.grade;
   if (!item.tests) item.tests = (await api('tests', { id: item.exercise.id })).tests;
   if (item.testedCode !== item.code || item.results.length !== item.tests.length) {
-    item.results = await runPython(item.code, item.tests, item.exercise.mode); item.testedCode = item.code;
+    item.results = await runPython(item.code, item.tests, item.exercise.mode); item.runtimeMs = item.results.runtimeMs; item.testedCode = item.code;
   }
   item.output = item.results.filter(r => r.passed).length + '/' + item.results.length + ' bộ kiểm tra đạt.';
   item.outputError = false; save(); render();
@@ -269,7 +346,7 @@ $('hero-run').onclick=async()=>{const b=$('hero-run'),out=$('hero-output');b.dis
 $('generate').onclick = generate; $('run').onclick = run; $('submit').onclick = submit; $('hint').onclick = hint;
 $('exercise-number').onchange = () => { state.exerciseNumbers[state.topic] = Number($('exercise-number').value); save(); generate(); };
 $('submit-all').onclick = () => submitAll(); $('cancel-run').onclick = () => cancelRunner?.();
-$('code').addEventListener('input', () => { const item = current(); if (!item) return; item.code = $('code').value; item.grade = null; item.results = []; updateLines(); $('feedback').hidden = true; $('checks').hidden = true; clearTimeout(saveTimeout); saveTimeout = setTimeout(save, 300); });
+$('code').addEventListener('input', () => { const item = current(); if (!item) return; item.code = $('code').value; item.grade = null; item.results = []; item.runtimeMs = null; updateLines(); $('feedback').hidden = true; $('checks').hidden = true; if (editorInstance && editorInstance.getValue() !== item.code) { syncingEditor = true; editorInstance.setValue(item.code); syncingEditor = false; } clearTimeout(saveTimeout); saveTimeout = setTimeout(save, 300); });
 $('code').addEventListener('scroll', () => $('line-numbers').scrollTop = $('code').scrollTop);
 $('code').addEventListener('keydown', event => {
   if (event.key === 'Tab') {
@@ -292,8 +369,16 @@ $('download').onclick = () => {
   const url = URL.createObjectURL(new Blob([current().code], { type: 'text/x-python;charset=utf-8' }));
   const a = document.createElement('a'); a.href = url; a.download = 'main.py'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
+$('font-down').onclick = () => { editorFontSize = Math.max(12, editorFontSize - 1); editorInstance?.updateOptions({ fontSize: editorFontSize }); };
+$('font-up').onclick = () => { editorFontSize = Math.min(28, editorFontSize + 1); editorInstance?.updateOptions({ fontSize: editorFontSize }); };
+$('discussion-form').onsubmit = event => {
+  event.preventDefault(); const item = current(), input = $('discussion-input'), text = input.value.trim(); if (!item || !text) return;
+  const key = 'hocpython:discussion:v1:' + item.exercise.id; let entries = []; try { entries = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
+  entries.push({ text, at: Date.now() }); try { localStorage.setItem(key, JSON.stringify(entries.slice(-100))); } catch { toast('Không thể lưu ghi chú trên trình duyệt này.'); return; }
+  renderDiscussion(item);
+};
 let theme=localStorage.getItem('hocpython:theme:v2')||'light';
-function applyTheme(){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-checked',String(theme==='dark'));$('theme-label').textContent=theme==='dark'?'Giao diện tối':'Giao diện sáng';}
+function applyTheme(){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-checked',String(theme==='dark'));$('theme-label').textContent=theme==='dark'?'Giao diện tối':'Giao diện sáng';if(editorInstance)window.monaco.editor.setTheme(theme==='dark'?'vs-dark':'vs');}
 applyTheme();
 $('theme').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();localStorage.setItem('hocpython:theme:v2',theme);};
 async function init() {
@@ -308,5 +393,4 @@ async function init() {
   setInterval(updateTimer, 1000);
 }
 init();
-
 
