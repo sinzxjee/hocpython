@@ -77,13 +77,14 @@ function loadMonaco() {
     script.onerror = () => { clearTimeout(startupTimer); reject(new Error('Không tải được tệp Monaco; đang dùng editor cơ bản.')); };
     script.onload = () => {
       try {
+      $('editor-engine').textContent = 'Monaco: đang tải lõi…';
       window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob(["self.MonacoEnvironment={baseUrl:'" + base.replace(/\/vs$/, '') + "'};importScripts('" + base + "/base/worker/workerMain.js');"], { type: 'text/javascript' })) };
       window.require.config({ paths: { vs: base }, waitSeconds: 8 });
-      window.require(['vs/editor/editor.main', 'vs/basic-languages/python/python'], (_editorMain, python) => {
+      window.require(['vs/editor/editor.main'], () => {
         try {
         window.monaco.languages.register({ id: 'python' });
-        window.monaco.languages.setMonarchTokensProvider('python', python.language);
-        window.monaco.languages.setLanguageConfiguration('python', python.conf);
+        window.monaco.languages.setLanguageConfiguration('python', { comments: { lineComment: '#' }, brackets: [['{','}'],['[',']'],['(',')']], autoClosingPairs: [{open:'(',close:')'},{open:'[',close:']'},{open:'{',close:'}'},{open:'"',close:'"'},{open:"'",close:"'"}] });
+        window.monaco.languages.setMonarchTokensProvider('python', { defaultToken: '', tokenizer: { root: [[/#.*$/, 'comment'], [/["'][^"']*["']/, 'string'], [/(def|return|if|elif|else|for|while|in|and|or|not|True|False|None|import|from|as|pass|break|continue)\b/, 'keyword'], [/\b\d+(\.\d+)?\b/, 'number'], [/\b(input|print|int|float|str|len|sum|max|min|range|list|set|tuple)\b/, 'predefined'], [/[a-zA-Z_][\w]*/, 'identifier'], [/[{}\[\]()]/, '@brackets'], [/[=+*/%<>!-]+/, 'operator']] } });
         const host = $('monaco-editor');
         editorInstance = window.monaco.editor.create(host, {
           value: $('code').value, language: 'python', theme: theme === 'dark' ? 'vs-dark' : 'vs',
