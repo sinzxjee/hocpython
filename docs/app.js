@@ -73,7 +73,7 @@ function loadMonaco() {
   monacoPromise = new Promise((resolve, reject) => {
     const base = new URL('./vendor/monaco/vs', import.meta.url).href;
     const script = document.createElement('script'); script.src = base + '/loader.js'; script.crossOrigin = 'anonymous';
-    script.onerror = () => reject(new Error('Không tải được Monaco; đang dùng editor cơ bản.'));
+    script.onerror = () => reject(new Error('Không tải được tệp Monaco; đang dùng editor cơ bản.'));
     script.onload = () => {
       window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob(["self.MonacoEnvironment={baseUrl:'" + base.replace(/\/vs$/, '') + "'};importScripts('" + base + "/base/worker/workerMain.js');"], { type: 'text/javascript' })) };
       window.require.config({ paths: { vs: base } });
