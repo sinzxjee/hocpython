@@ -1,6 +1,6 @@
 import { practice } from './practice.js';
 const $ = id => document.getElementById(id);
-const KEY = 'hocpython:v2';
+const KEY = 'hocpython:v3';
 const topicData = {
   variables: { title: 'Biến & toán tử', subtitle: 'Bắt đầu với các giá trị, phép tính và một chương trình nhỏ.', tags: 'input · print · toán tử', text: 'input() trả về chuỗi. Dùng int() hoặc float() để tính toán. +, -, *, /, //, %, ** lần lượt là cộng, trừ, nhân, chia, chia nguyên, chia dư và lũy thừa.', code: 'gia = float(input())\nso_luong = int(input())\nprint(gia * so_luong)' },
   sequences: { title: 'Dữ liệu tuần tự', subtitle: 'Danh sách, chuỗi, tuple và set: giữ dữ liệu ở đúng chỗ.', tags: 'list · string · tuple · set', text: 'List có thể sửa và thêm phần tử. Tuple không thay đổi tại chỗ. Set loại trùng và không bảo đảm thứ tự. String là chuỗi ký tự. sum(), max(), count() hỗ trợ xử lý dữ liệu.', code: 'a = list(map(int, input().split()))\nprint(sum(a), max(a))\na.append(10)\nt = tuple(a)\ns = set(a)' },
