@@ -73,11 +73,14 @@ function loadMonaco() {
   monacoPromise = new Promise((resolve, reject) => {
     const base = new URL('./vendor/monaco/vs', import.meta.url).href;
     const script = document.createElement('script'); script.src = base + '/loader.js'; script.crossOrigin = 'anonymous';
-    script.onerror = () => reject(new Error('Không tải được tệp Monaco; đang dùng editor cơ bản.'));
+    const startupTimer = setTimeout(() => reject(new Error('Monaco khởi động quá lâu; đang dùng editor cơ bản.')), 20000);
+    script.onerror = () => { clearTimeout(startupTimer); reject(new Error('Không tải được tệp Monaco; đang dùng editor cơ bản.')); };
     script.onload = () => {
+      try {
       window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob(["self.MonacoEnvironment={baseUrl:'" + base.replace(/\/vs$/, '') + "'};importScripts('" + base + "/base/worker/workerMain.js');"], { type: 'text/javascript' })) };
       window.require.config({ paths: { vs: base } });
       window.require(['vs/editor/editor.main', 'vs/basic-languages/python/python'], (_editorMain, python) => {
+        try {
         window.monaco.languages.register({ id: 'python' });
         window.monaco.languages.setMonarchTokensProvider('python', python.language);
         window.monaco.languages.setLanguageConfiguration('python', python.conf);
@@ -106,8 +109,10 @@ function loadMonaco() {
         });
         editorInstance.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.Enter, () => run());
         editorInstance.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KEY_S, () => save());
-        basicDiagnostics(); resolve(editorInstance);
-      }, reject);
+        basicDiagnostics(); clearTimeout(startupTimer); resolve(editorInstance);
+        } catch (error) { clearTimeout(startupTimer); reject(error); }
+      }, error => { clearTimeout(startupTimer); reject(error instanceof Error ? error : new Error('Không khởi tạo được Monaco.')); });
+      } catch (error) { clearTimeout(startupTimer); reject(error instanceof Error ? error : new Error('Không khởi tạo được Monaco.')); }
     };
     document.head.appendChild(script);
   }).catch(error => { $('editor-engine').textContent = 'Editor cơ bản'; $('editor-message').textContent = error.message; throw error; });
