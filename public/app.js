@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const KEY = 'hocpython:v1';
+const KEY = 'hocpython:v2';
 const topicData = {
   variables: { title: 'Biến & toán tử', subtitle: 'Bắt đầu với các giá trị, phép tính và một chương trình nhỏ.', tags: 'input · print · toán tử', text: 'input() trả về chuỗi. Dùng int() hoặc float() để tính toán. +, -, *, /, //, %, ** lần lượt là cộng, trừ, nhân, chia, chia nguyên, chia dư và lũy thừa.', code: 'gia = float(input())\nso_luong = int(input())\nprint(gia * so_luong)' },
   sequences: { title: 'Dữ liệu tuần tự', subtitle: 'Danh sách, chuỗi, tuple và set: giữ dữ liệu ở đúng chỗ.', tags: 'list · string · tuple · set', text: 'List có thể sửa và thêm phần tử. Tuple không thay đổi tại chỗ. Set loại trùng và không bảo đảm thứ tự. String là chuỗi ký tự. sum(), max(), count() hỗ trợ xử lý dữ liệu.', code: 'a = list(map(int, input().split()))\nprint(sum(a), max(a))\na.append(10)\nt = tuple(a)\ns = set(a)' },
@@ -13,11 +13,11 @@ function restore() {
     const v = JSON.parse(localStorage.getItem(KEY));
     if (v && v.sessions && typeof v.sessions === 'object' && !Array.isArray(v.sessions) && Array.isArray(v.history)) return v;
   } catch {}
-  return { topic: 'variables', sessions: {}, history: [], difficulty: 'basic', source: 'sample' };
+  return { topic: 'variables', sessions: {}, history: [], exerciseNumbers: {} };
 }
 const state = restore();
 if (!topicData[state.topic]) state.topic = 'variables';
-let config = { aiConfigured: false, tokenRequired: false };
+let config = { tokenRequired: false };
 let busy = false, cancelRunner = null, toastTimeout, saveTimeout;
 const escape = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function save() {
@@ -32,24 +32,23 @@ function session() { return state.sessions[state.topic]; }
 function current() { return session()?.items?.[session().index || 0]; }
 function setBusy(value, label = '') {
   busy = value;
-  ['generate', 'run', 'submit', 'submit-all', 'hint', 'reset', 'difficulty', 'source'].forEach(id => $(id).disabled = value);
+  ['generate', 'run', 'submit', 'submit-all', 'hint', 'reset', 'exercise-number'].forEach(id => $(id).disabled = value);
   document.querySelectorAll('[data-topic]').forEach(button => button.disabled = value);
   $('code').disabled = value || Boolean(session()?.ended);
   if (label) $('runtime-status').textContent = label;
   if (!value) {
     $('runtime-status').textContent = 'Python / sẵn sàng khi chạy';
-    $('hint').disabled = Boolean(session()?.ended) || (current()?.hints?.length || 0) >= 3;
-    $('generate').textContent = state.topic === 'exam' ? 'Tạo đề 5 câu ↗' : 'Tạo bài mới ↗';
-    $('submit').textContent = 'Nộp & nhận sửa bài ↗';
+    $('hint').disabled = Boolean(session()?.ended) || (current()?.hints?.length || 0) >= (current()?.exercise?.hintCount || 0);
+    $('generate').textContent = state.topic === 'exam' ? 'Tạo đề 5 câu ↗' : 'Mở bài ↗';
+    $('submit').textContent = 'Nộp & xem kết quả ↗';
     $('cancel-run').hidden = true;
   }
 }
 async function api(path, data) {
-  const token = sessionStorage.getItem('hocpython:access') || '';
   let response;
   try {
     response = await fetch('/api/' + path, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data), signal: AbortSignal.timeout(path === 'generate' ? 420000 : 90000)
     });
   } catch (error) { throw new Error(error.name === 'TimeoutError' ? 'Yêu cầu quá lâu. Hãy thử lại.' : 'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.'); }
@@ -73,7 +72,7 @@ function renderFeedback(item) {
   $('feedback').hidden = !f;
   if (!f) return;
   const issues = Array.isArray(f.issues) ? f.issues : [];
-  $('feedback').innerHTML = '<div class="feedback-top"><div><p class="eyebrow">' + (f.source === 'ai' ? 'NHẬN XÉT AI' : 'ĐỐI CHIẾU BÀI MẪU') + '</p><h2>' + escape(f.summary) + '</h2><p class="muted">' + f.passed + '/' + f.total + ' bộ kiểm tra đạt. Điểm theo bộ kiểm tra; yêu cầu cách làm được nhận xét riêng.</p></div><div class="score">' + f.score.toFixed(1) + '<small> / 10</small></div></div>' +
+  $('feedback').innerHTML = '<div class="feedback-top"><div><p class="eyebrow">KẾT QUẢ BỘ TEST</p><h2>' + escape(f.summary) + '</h2><p class="muted">' + f.passed + '/' + f.total + ' bộ kiểm tra đạt. Điểm tính tự động từ kết quả chạy code.</p></div><div class="score">' + f.score.toFixed(1) + '<small> / 10</small></div></div>' +
     (f.strengths?.length ? '<ul>' + f.strengths.map(s => '<li>' + escape(s) + '</li>').join('') + '</ul>' : '') +
     issues.map(i => '<div class="issue"><strong>' + (i.line > 0 ? 'Dòng ' + i.line : 'Cần xem lại') + '</strong><p>' + escape(i.explanation) + '</p><p class="muted">' + escape(i.fix) + '</p></div>').join('') +
     '<p>' + escape(f.explanation) + '</p><details><summary>Xem code đã sửa / lời giải tham khảo</summary><pre>' + escape(f.correctedCode) + '</pre><button class="outline" id="copy-solution">Sao chép code</button></details>';
@@ -96,7 +95,7 @@ function renderExamSummary() {
   $('exam-result').hidden = false;
   $('exam-result').innerHTML = '<p class="eyebrow">KẾT QUẢ THI THỬ</p><h2>' + (all ? score.toFixed(1) + ' / 10 điểm' : 'Một số câu chưa chấm xong') + '</h2>' +
     s.items.map((item, i) => '<p>Câu ' + (i + 1) + ' / ' + escape(topicData[item.exercise.topic].title) + ': ' + (item.grade ? (item.grade.score / 5).toFixed(1) + '/2 điểm' : 'chưa chấm — có thể nộp lại') + '</p>').join('') +
-    '<p class="muted">Điểm theo kết quả kiểm tra trên trình duyệt, dành cho tự luyện. Xem từng câu để đọc nhận xét và sửa chữa.</p>';
+    '<p class="muted">Điểm được tính bằng bộ test chạy trong trình duyệt. Mở từng câu để xem lời giải tham khảo và tự đối chiếu.</p>';
 }
 function render() {
   const t = topicData[state.topic]; const s = session(); const item = current(); const e = item?.exercise;
@@ -104,8 +103,14 @@ function render() {
   $('title').textContent = t.title + '_';
   $('subtitle').textContent = t.subtitle;
   $('eyebrow').textContent = state.topic === 'exam' ? 'THI THỬ / KHỐI NGÀNH KINH TẾ' : 'PYTHON / CHỦ ĐỀ ' + String(Object.keys(topicData).indexOf(state.topic) + 1).padStart(2, '0');
-  $('generate').textContent = state.topic === 'exam' ? 'Tạo đề 5 câu ↗' : 'Tạo bài mới ↗';
-  $('mode-note').textContent = state.topic === 'exam' ? '5 câu · 60 phút · 10 điểm' : 'Bài mới mỗi lần tạo.';
+  $('generate').textContent = state.topic === 'exam' ? 'Tạo đề 5 câu ↗' : 'Mở bài ↗';
+  $('mode-note').textContent = state.topic === 'exam' ? '5 câu · 60 phút · 10 điểm' : '10 bài soạn sẵn trong chủ đề.';
+  $('exercise-number').hidden = state.topic === 'exam';
+  if (state.topic !== 'exam') {
+    const selected = state.exerciseNumbers[state.topic] || 1;
+    $('exercise-number').innerHTML = Array.from({ length: 10 }, (_, i) => '<option value="' + (i + 1) + '">Bài ' + String(i + 1).padStart(2, '0') + '</option>').join('');
+    $('exercise-number').value = String(selected);
+  }
   $('theory').hidden = state.topic === 'exam';
   if (t.text) {
     $('theory-tags').textContent = t.tags;
@@ -120,7 +125,7 @@ function render() {
   showStats();
   if (!e) return;
   $('problem-meta').textContent = state.topic === 'exam' ? 'CÂU ' + String(s.index + 1).padStart(2, '0') + ' / ' + topicData[e.topic].title : 'BÀI TẬP / ' + topicData[e.topic].title;
-  $('problem-source').textContent = e.source === 'ai' ? 'AI tạo mới' : 'Bài mẫu';
+  $('problem-source').textContent = 'Bài ' + String(e.exerciseNumber || 1).padStart(2, '0') + ' / 10';
   $('problem-title').textContent = e.title; $('statement').textContent = e.statement;
   $('input-format').textContent = e.inputFormat; $('output-format').textContent = e.outputFormat;
   $('constraints').textContent = e.constraints;
@@ -134,13 +139,14 @@ function render() {
   $('output').classList.toggle('error', Boolean(item.outputError));
   $('hints').innerHTML = item.hints.map(h => '<li>' + escape(h) + '</li>').join('');
   $('hint-note').hidden = Boolean(item.hints.length);
-  $('hint').textContent = item.hints.length >= 3 ? 'Đã mở 3 / 3 hint' : 'Mở hint ' + (item.hints.length + 1) + ' / 3';
-  $('hint').disabled = busy || Boolean(s.ended) || item.hints.length >= 3;
+  const hintCount = item.exercise.hintCount || 0;
+  $('hint').textContent = item.hints.length >= hintCount ? 'Đã mở hết gợi ý' : 'Mở gợi ý ' + (item.hints.length + 1) + ' / ' + hintCount;
+  $('hint').disabled = busy || Boolean(s.ended) || item.hints.length >= hintCount;
   renderFeedback(item); renderTests(item);
   if (state.topic === 'exam') {
     $('question-tabs').innerHTML = s.items.map((q, i) => '<button data-index="' + i + '" class="' + (i === s.index ? 'active' : '') + '">Câu ' + (i + 1) + (q.grade ? ' ✓' : '') + '</button>').join('');
     $('question-tabs').querySelectorAll('button').forEach(b => b.onclick = () => { if (busy) return; s.index = Number(b.dataset.index); save(); render(); });
-    $('submit-all').textContent = s.submitted ? 'Chấm lại câu chưa xong' : 'Nộp toàn bộ';
+    $('submit-all').textContent = s.submitted ? 'Kiểm tra lại câu chưa xong' : 'Nộp toàn bộ';
     renderExamSummary(); updateTimer();
   }
 }
@@ -151,9 +157,9 @@ async function generate() {
   if (old?.items.some(i => i.code !== i.exercise.starter) && !confirm('Tạo bài mới sẽ thay bài hiện tại trong chủ đề này. Tiếp tục?')) return;
   setBusy(true); $('generate').textContent = state.topic === 'exam' ? 'Đang tạo 5 câu…' : 'Đang tạo bài…';
   try {
-    const response = await api('generate', { topic: state.topic, exam: state.topic === 'exam', source: $('source').value, difficulty: $('difficulty').value });
+    const response = await api('generate', { topic: state.topic, exam: state.topic === 'exam', exerciseNumber: Number($('exercise-number').value) });
     state.sessions[state.topic] = { items: response.exercises.map(itemFrom), index: 0, deadline: state.topic === 'exam' ? Date.now() + 3600000 : null, ended: false, submitted: false };
-    state.source = $('source').value; state.difficulty = $('difficulty').value;
+    if (state.topic !== 'exam') state.exerciseNumbers[state.topic] = Number($('exercise-number').value);
     save(); render();
     toast(state.topic === 'exam' ? 'Đề đã sẵn sàng. Đồng hồ bắt đầu.' : 'Bài mới đã sẵn sàng.');
   } catch (error) { toast(error.message); } finally { setBusy(false); }
@@ -205,7 +211,7 @@ async function gradeItem(item) {
   }
   item.output = item.results.filter(r => r.passed).length + '/' + item.results.length + ' bộ kiểm tra đạt.';
   item.outputError = false; save(); render();
-  $('runtime-status').textContent = item.exercise.source === 'ai' ? 'AI đang đọc và sửa bài…' : 'Đang đối chiếu bài mẫu…';
+  $('runtime-status').textContent = 'Đang tính điểm từ bộ test…';
   const grade = await api('grade', { id: item.exercise.id, code: item.code, results: item.results });
   item.grade = grade; item.gradedCode = item.code;
   state.history.push({ id: item.exercise.id, score: grade.score, topic: item.exercise.topic, at: Date.now() });
@@ -214,7 +220,7 @@ async function gradeItem(item) {
 }
 async function submit() {
   if (busy || !current()) return;
-  setBusy(true); $('submit').textContent = 'Đang chấm…';
+  setBusy(true); $('submit').textContent = 'Đang kiểm tra…';
   try { await gradeItem(current()); render(); $('feedback').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   catch (error) { toast(error.message); }
   finally { setBusy(false); }
@@ -227,18 +233,18 @@ async function submitAll(automatic = false) {
   const failures = [];
   try {
     for (let i = 0; i < s.items.length; i++) {
-      s.index = i; render(); $('submit-all').textContent = 'Đang chấm câu ' + (i + 1) + '…';
+      s.index = i; render(); $('submit-all').textContent = 'Đang kiểm tra câu ' + (i + 1) + '…';
       try { await gradeItem(s.items[i]); }
       catch (error) { failures.push('Câu ' + (i + 1) + ': ' + error.message); }
     }
     render();
-    if (failures.length) toast(failures.join(' / ')); else toast('Đã chấm toàn bộ bài thi.');
+    if (failures.length) toast(failures.join(' / ')); else toast('Đã kiểm tra toàn bộ bài thi.');
     $('exam-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } finally { setBusy(false); }
 }
 async function hint() {
-  const item = current(); if (busy || !item || item.hints.length >= 3) return;
-  setBusy(true); $('hint').textContent = 'Đang lấy hint…';
+  const item = current(); if (busy || !item || item.hints.length >= (item.exercise.hintCount || 0)) return;
+  setBusy(true); $('hint').textContent = 'Đang mở gợi ý…';
   try {
     const result = await api('hint', { id: item.exercise.id, level: item.hints.length, code: item.code });
     item.hints.push(result.hint); save(); render();
@@ -249,7 +255,7 @@ function updateTimer() {
   if (!s?.deadline) return;
   const seconds = Math.max(0, Math.ceil((s.deadline - Date.now()) / 1000));
   if (state.topic === 'exam') $('timer').textContent = s.ended ? 'Đã kết thúc' : String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
-  if (seconds === 0 && !s.ended) { s.ended = true; save(); if (state.topic === 'exam') render(); toast('Hết 60 phút. Bài làm đã khóa, đang chuẩn bị chấm.'); }
+  if (seconds === 0 && !s.ended) { s.ended = true; save(); if (state.topic === 'exam') render(); toast('Hết 60 phút. Bài làm đã khóa, đang kiểm tra.'); }
   if (s.ended && !s.autoSubmitted && !busy) {
     s.autoSubmitted = true; save();
     const oldTopic = state.topic; state.topic = 'exam'; render(); submitAll(true);
@@ -258,6 +264,7 @@ function updateTimer() {
 }
 document.querySelectorAll('[data-topic]').forEach(button => button.onclick = () => { if (busy) return; state.topic = button.dataset.topic; save(); render(); });
 $('generate').onclick = generate; $('run').onclick = run; $('submit').onclick = submit; $('hint').onclick = hint;
+$('exercise-number').onchange = () => { state.exerciseNumbers[state.topic] = Number($('exercise-number').value); save(); generate(); };
 $('submit-all').onclick = () => submitAll(); $('cancel-run').onclick = () => cancelRunner?.();
 $('code').addEventListener('input', () => { const item = current(); if (!item) return; item.code = $('code').value; item.grade = null; item.results = []; updateLines(); $('feedback').hidden = true; $('checks').hidden = true; clearTimeout(saveTimeout); saveTimeout = setTimeout(save, 300); });
 $('code').addEventListener('scroll', () => $('line-numbers').scrollTop = $('code').scrollTop);
@@ -281,10 +288,6 @@ $('download').onclick = () => {
   const url = URL.createObjectURL(new Blob([current().code], { type: 'text/x-python;charset=utf-8' }));
   const a = document.createElement('a'); a.href = url; a.download = 'main.py'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
-$('difficulty').value = state.difficulty; $('source').value = state.source;
-$('settings-open').onclick = () => { $('access-token').value = sessionStorage.getItem('hocpython:access') || ''; $('settings').showModal(); };
-$('save-settings').onclick = () => { sessionStorage.setItem('hocpython:access', $('access-token').value.trim()); $('settings').close(); toast('Đã lưu mã truy cập cho phiên này.'); };
-$('clear-history').onclick = () => { if (!confirm('Xóa lịch sử và toàn bộ bài đang làm trên trình duyệt này?')) return; state.history = []; state.sessions = {}; save(); render(); $('settings').close(); };
 let theme = localStorage.getItem('hocpython:theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 document.documentElement.dataset.theme = theme;
 $('theme').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; localStorage.setItem('hocpython:theme', theme); };
@@ -293,22 +296,13 @@ async function init() {
   try {
     const response = await fetch('/api/config'); if (!response.ok) throw new Error('config');
     config = await response.json();
-    $('connection').textContent = config.aiConfigured ? 'AI đã kết nối' : 'chế độ bài mẫu';
-    $('ai-settings-status').textContent = config.aiConfigured ? 'AI đã được cấu hình trên máy chủ.' : 'Máy chủ chưa có OPENAI_API_KEY. Bài mẫu vẫn chạy và chấm được.';
-    $('notice').hidden = config.aiConfigured;
-    $('notice').textContent = 'AI chưa được bật. Bạn vẫn có thể luyện với bài mẫu ngẫu nhiên, mở gợi ý và chấm theo bộ kiểm tra.';
-    if (!config.aiConfigured) { $('source').value = 'sample'; state.source = 'sample'; $('source').querySelector('option[value="ai"]').disabled = true; }
-    else if (!Object.keys(state.sessions).length) { $('source').value = 'ai'; state.source = 'ai'; }
-    updateDifficulty();
-    if (!session() && state.topic !== 'exam' && !config.tokenRequired && !config.aiConfigured) await generate();
+    $('connection').textContent = 'bài soạn sẵn · tự chấm';
+    $('notice').hidden = false;
+    $('notice').textContent = 'Mỗi chủ đề có 10 bài do mình biên soạn. Chạy và nộp bài được kiểm tra bằng bộ test có sẵn; không cần AI hay API key.';
+    if (!session() && state.topic !== 'exam') await generate();
   } catch { $('connection').textContent = 'máy chủ chưa kết nối'; toast('Không kết nối được máy chủ. Chạy node --env-file-if-exists=.env server.mjs rồi mở http://localhost:3000.'); }
   setInterval(updateTimer, 1000);
 }
-function updateDifficulty() {
-  const sample = $('source').value === 'sample';
-  $('difficulty').querySelector('option[value="medium"]').disabled = sample;
-  if (sample) { $('difficulty').value = 'basic'; state.difficulty = 'basic'; }
-}
-$('source').addEventListener('change', updateDifficulty);
 init();
+
 
