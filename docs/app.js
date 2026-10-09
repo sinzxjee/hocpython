@@ -78,7 +78,7 @@ function loadMonaco() {
     script.onload = () => {
       try {
       window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob(["self.MonacoEnvironment={baseUrl:'" + base.replace(/\/vs$/, '') + "'};importScripts('" + base + "/base/worker/workerMain.js');"], { type: 'text/javascript' })) };
-      window.require.config({ paths: { vs: base } });
+      window.require.config({ paths: { vs: base }, waitSeconds: 8 });
       window.require(['vs/editor/editor.main', 'vs/basic-languages/python/python'], (_editorMain, python) => {
         try {
         window.monaco.languages.register({ id: 'python' });
