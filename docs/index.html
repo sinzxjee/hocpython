@@ -7,16 +7,16 @@
   <meta name="description" content="Luyện Python cho sinh viên kinh tế: 5 chủ đề, bài tập soạn sẵn và chấm code trực tiếp.">
   <title>hocpython / luyện tập</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=readable-2">
-  <script type="module" src="./app.js?v=readable-2"></script>
+  <link rel="stylesheet" href="./style.css?v=dashboard-1">
+  <script type="module" src="./app.js?v=dashboard-1"></script>
 </head>
 <body>
   <header>
     <div class="brand-row">
       <a href="./" class="brand">py<span>/</span>kinh tế</a>
-      <div class="header-right"><span id="connection">đang kết nối…</span><button id="theme" class="quiet" aria-label="Đổi giao diện sáng hoặc tối">sáng / tối</button></div>
+      <div class="header-right"><span id="connection">đang kết nối…</span><button id="theme" class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Giao diện tối"><svg viewBox="0 0 48 28" aria-hidden="true"><rect class="switch-track" x="1" y="1" width="46" height="26" rx="13"/><circle class="switch-knob" cx="14" cy="14" r="9"/><path class="switch-sun" d="M14 10v8M10 14h8M11.2 11.2l5.6 5.6m0-5.6-5.6 5.6"/></svg><span id="theme-label">Giao diện sáng</span></button></div>
     </div>
-    <nav aria-label="Chủ đề Python">
+    <nav aria-label="Chủ đề Python"><button data-topic="home" class="active"><span>00</span> Tổng quan</button>
       <button data-topic="variables" class="active"><span>01</span> Biến & toán tử</button>
       <button data-topic="sequences"><span>02</span> Dữ liệu tuần tự</button>
       <button data-topic="conditions"><span>03</span> Điều kiện</button>
@@ -26,6 +26,21 @@
     </nav>
   </header>
   <main>
+<section id="dashboard" class="dashboard" hidden>
+  <div class="hero-grid"><div class="hero-copy"><p class="eyebrow">PYTHON / DÀNH CHO KHỐI NGÀNH KINH TẾ</p><h1>Luyện Python,<br>theo cách của bạn<span class="cursor">_</span></h1><p>Thực hành những bài toán gần với doanh thu, tài chính và dữ liệu. Tiến độ được lưu ngay trên thiết bị.</p><button class="solid" id="start-learning">Tiếp tục học ↗</button></div>
+    <section class="mini-editor" aria-label="Trình chạy thử Python"><div class="panel-top"><span>THỬ NHANH / LỢI NHUẬN ĐƠN GIẢN</span><span>Python</span></div><textarea id="hero-code" spellcheck="false" aria-label="Code thử nhanh">von = float(input())
+lai_suat = float(input())
+nam = int(input())
+print(von * lai_suat / 100 * nam)</textarea><div class="mini-run-row"><textarea id="hero-input" aria-label="Dữ liệu chạy thử" rows="3">10000000
+8
+2</textarea><button class="solid" id="hero-run">Chạy ↗</button></div><pre id="hero-output">Lợi nhuận sẽ hiện ở đây.</pre></section>
+  </div>
+  <div class="dashboard-stats" id="dashboard-stats"></div>
+  <div class="dashboard-grid"><section class="dash-panel"><div class="dash-heading"><div><p class="eyebrow">TIẾN ĐỘ</p><h2>Học đến đâu rồi?</h2></div></div><div id="progress-list"></div></section><section class="dash-panel"><div class="dash-heading"><div><p class="eyebrow">GỢI Ý TIẾP THEO</p><h2>Nên học bài nào?</h2></div></div><div id="recommendation"></div></section></div>
+  <section class="dash-panel finder"><div class="dash-heading"><div><p class="eyebrow">50 BÀI THỰC HÀNH</p><h2>Tìm bài tập</h2></div><span class="muted">Tìm theo chủ đề, từ khóa hoặc ngữ cảnh kinh tế</span></div><div class="finder-controls"><input id="finder-search" type="search" placeholder="Ví dụ: for, list, lãi suất, doanh thu…"><select id="finder-topic"><option value="all">Tất cả chủ đề</option><option value="variables">Biến & toán tử</option><option value="sequences">Dữ liệu tuần tự</option><option value="conditions">Điều kiện</option><option value="loops">Vòng lặp</option><option value="functions">Hàm</option></select><select id="finder-level"><option value="all">Mọi mức</option><option value="Dễ">Dễ</option><option value="Trung bình">Trung bình</option><option value="Khó">Khó</option></select><select id="finder-field"><option value="all">Mọi lĩnh vực</option><option value="Tài chính">Tài chính</option><option value="Marketing">Marketing</option><option value="Kế toán">Kế toán</option><option value="Kinh tế vĩ mô">Kinh tế vĩ mô</option></select></div><div id="finder-results" class="finder-results"></div></section>
+  <section class="dash-panel recent"><div class="dash-heading"><div><p class="eyebrow">LỊCH SỬ GẦN ĐÂY</p><h2>Bài đã nộp</h2></div></div><div id="recent-list"></div></section>
+</section>
+
     <section class="page-heading"><div><p class="eyebrow" id="eyebrow">PYTHON / KHỐI NGÀNH KINH TẾ</p><h1 id="title">Biến & toán tử<span class="cursor">_</span></h1><p id="subtitle">Bắt đầu với các giá trị, phép tính và một chương trình nhỏ.</p></div><div class="stats"><span id="completed">0 bài đã nộp</span><span id="best">— điểm cao nhất</span></div></section>
     <section class="toolbar" aria-label="Chọn bài tập"><div class="control"><label for="exercise-number">bài</label><select id="exercise-number"></select></div><span id="mode-note">10 bài soạn sẵn trong chủ đề.</span><button id="generate" class="solid">Mở bài ↗</button></section>
     <p class="notice" id="notice" hidden></p>
@@ -61,4 +76,5 @@
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>
+
 

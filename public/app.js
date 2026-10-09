@@ -1,7 +1,9 @@
 import { practice } from './practice.js';
+import { makeExercise } from './bank.js';
 const $ = id => document.getElementById(id);
 const KEY = 'hocpython:v3';
 const topicData = {
+  home: { title: 'Tổng quan', subtitle: 'Không gian luyện Python của bạn.' },
   variables: { title: 'Biến & toán tử', subtitle: 'Bắt đầu với các giá trị, phép tính và một chương trình nhỏ.', tags: 'input · print · toán tử', text: 'input() trả về chuỗi. Dùng int() hoặc float() để tính toán. +, -, *, /, //, %, ** lần lượt là cộng, trừ, nhân, chia, chia nguyên, chia dư và lũy thừa.', code: 'gia = float(input())\nso_luong = int(input())\nprint(gia * so_luong)' },
   sequences: { title: 'Dữ liệu tuần tự', subtitle: 'Danh sách, chuỗi, tuple và set: giữ dữ liệu ở đúng chỗ.', tags: 'list · string · tuple · set', text: 'List có thể sửa và thêm phần tử. Tuple không thay đổi tại chỗ. Set loại trùng và không bảo đảm thứ tự. String là chuỗi ký tự. sum(), max(), count() hỗ trợ xử lý dữ liệu.', code: 'a = list(map(int, input().split()))\nprint(sum(a), max(a))\na.append(10)\nt = tuple(a)\ns = set(a)' },
   conditions: { title: 'Điều kiện', subtitle: 'Phân loại và lựa chọn bằng if, elif, else.', tags: 'if · elif · else · and/or', text: 'Nhánh if đúng sẽ chạy trước; elif xét khi nhánh trước sai. else xử lý trường hợp còn lại. == so sánh bằng, = dùng để gán. Chú ý các giá trị đúng tại ngưỡng.', code: 'diem = float(input())\nif diem >= 8:\n    print("Giỏi")\nelif diem >= 6.5:\n    print("Khá")\nelse:\n    print("Cần cố gắng")' },
@@ -14,10 +16,10 @@ function restore() {
     const v = JSON.parse(localStorage.getItem(KEY));
     if (v && v.sessions && typeof v.sessions === 'object' && !Array.isArray(v.sessions) && Array.isArray(v.history)) return v;
   } catch {}
-  return { topic: 'variables', sessions: {}, history: [], exerciseNumbers: {} };
+  return { topic: 'home', sessions: {}, history: [], exerciseNumbers: {} };
 }
 const state = restore();
-if (!topicData[state.topic]) state.topic = 'variables';
+if (!topicData[state.topic]) state.topic = 'home';
 let busy = false, cancelRunner = null, toastTimeout, saveTimeout;
 const escape = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function save() {
@@ -32,6 +34,7 @@ function session() { return state.sessions[state.topic]; }
 function current() { return session()?.items?.[session().index || 0]; }
 function setBusy(value, label = '') {
   busy = value;
+  $('generate').classList.toggle('loading-skeleton',value && state.topic!=='home');
   ['generate', 'run', 'submit', 'submit-all', 'hint', 'reset', 'exercise-number'].forEach(id => $(id).disabled = value);
   document.querySelectorAll('[data-topic]').forEach(button => button.disabled = value);
   $('code').disabled = value || Boolean(session()?.ended);
@@ -50,6 +53,13 @@ function showStats() {
   const scores = state.history.map(h => h.score);
   $('best').textContent = scores.length ? Math.max(...scores).toFixed(1) + '/10 điểm cao nhất' : '— điểm cao nhất';
 }
+const topicKeys = ['variables','sequences','conditions','loops','functions'];
+const fieldByTopic = {variables:'Tài chính',sequences:'Kế toán',conditions:'Marketing',loops:'Kinh tế vĩ mô',functions:'Tài chính'};
+const difficultyByNumber = ['Dễ','Dễ','Dễ','Trung bình','Trung bình','Trung bình','Trung bình','Khó','Khó','Khó'];
+function exerciseMeta(topic,n,exercise){const text=(exercise.title+' '+exercise.statement).toLowerCase();let field=fieldByTopic[topic];if(/doanh thu|khách hàng|chiến dịch|tỉ lệ chuyển đổi/.test(text))field='Marketing';if(/thuế|hóa đơn|kế toán|tồn kho|giao dịch|mã hàng/.test(text))field='Kế toán';if(/lạm phát|gdp|tăng trưởng|tỷ giá|lãi suất|ngoại tệ/.test(text))field='Kinh tế vĩ mô';if(/lương|lãi|vốn|đầu tư|cổ phiếu|giảm giá|lợi nhuận/.test(text))field='Tài chính';return{difficulty:difficultyByNumber[n-1]||'Trung bình',field};}
+function openExercise(topic,number){state.topic=topic;state.exerciseNumbers[topic]=number;save();render();if(!state.sessions[topic]||state.sessions[topic].items?.[0]?.exercise?.exerciseNumber!==number)generate();}
+function renderDashboard(){const total=state.history.length,best=total?Math.max(...state.history.map(h=>h.score||0)):0;const dates=new Set(state.history.map(h=>new Date(h.at).toLocaleDateString('sv-SE')));let streak=0,day=new Date();if(!dates.has(day.toLocaleDateString('sv-SE')))day.setDate(day.getDate()-1);while(dates.has(day.toLocaleDateString('sv-SE'))&&streak<365){streak++;day.setDate(day.getDate()-1);}$('dashboard-stats').innerHTML='<div><b>'+total+'</b><span>bài đã nộp</span></div><div><b>'+best.toFixed(1)+'</b><span>điểm cao nhất / 10</span></div><div><b>'+streak+' ngày</b><span>chuỗi học liên tiếp</span></div><div><b>50</b><span>bài trong 5 chủ đề</span></div>';$('progress-list').innerHTML=topicKeys.map(key=>{const ids=new Set(state.history.filter(h=>h.topic===key).map(h=>h.id));const pct=Math.min(100,ids.size*10);return '<div class="progress-row"><div><span>'+escape(topicData[key].title)+'</span><small>'+ids.size+'/10 bài</small></div><div class="progress-track"><i style="width:'+pct+'%"></i></div></div>';}).join('');let pick;outer:for(const topic of topicKeys){for(let n=1;n<=10;n++){const ex=makeExercise(topic,'basic',n);if(!state.history.some(h=>h.id===ex.id&&h.score===10)){pick={topic,n,ex};break outer;}}}if(!pick){const h=[...state.history].reverse().find(x=>x.score<10),m=h?.id.match(/^bank-(variables|sequences|conditions|loops|functions)-(\d+)$/);if(m)pick={topic:m[1],n:+m[2],ex:makeExercise(m[1],'basic',+m[2])};}$('recommendation').innerHTML=pick?'<button class="recommend-card" data-open-topic="'+pick.topic+'" data-open-number="'+pick.n+'"><span class="eyebrow">'+escape(topicData[pick.topic].title)+' · BÀI '+String(pick.n).padStart(2,'0')+'</span><b>'+escape(pick.ex.title)+'</b><span>'+escape(pick.ex.statement)+'</span><i>Bắt đầu bài này ↗</i></button>':'<p>Bạn đã hoàn thành cả 50 bài với điểm tối đa.</p>';$('recent-list').innerHTML=state.history.length?[...state.history].reverse().slice(0,6).map(h=>{const m=(h.id||'').match(/^bank-(variables|sequences|conditions|loops|functions)-(\d+)$/);if(!m)return '';const ex=makeExercise(m[1],'basic',+m[2]);return '<button class="recent-row" data-open-topic="'+m[1]+'" data-open-number="'+m[2]+'"><span>'+escape(ex.title)+'<small>'+escape(topicData[m[1]].title)+' · '+new Date(h.at).toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'})+'</small></span><b>'+Number(h.score||0).toFixed(1)+'</b></button>';}).join(''):'<p class="muted">Bài đã nộp sẽ xuất hiện ở đây.</p>';const filter=()=>{const q=$('finder-search').value.trim().toLowerCase(),topic=$('finder-topic').value,level=$('finder-level').value,field=$('finder-field').value;let rows=[];for(const key of topicKeys){if(topic!=='all'&&topic!==key)continue;for(let n=1;n<=10;n++){const ex=makeExercise(key,'basic',n),meta=exerciseMeta(key,n,ex),blob=[ex.title,ex.statement,ex.inputFormat,ex.outputFormat,ex.reference,ex.hints.join(' '),key,meta.field].join(' ').toLowerCase();if(q&&!blob.includes(q))continue;if(level!=='all'&&level!==meta.difficulty)continue;if(field!=='all'&&field!==meta.field)continue;rows.push('<button class="finder-card" data-open-topic="'+key+'" data-open-number="'+n+'"><span>'+escape(topicData[key].title)+' · '+meta.difficulty+' · '+meta.field+'</span><b>'+String(n).padStart(2,'0')+' / '+escape(ex.title)+'</b><small>'+escape(ex.statement)+'</small></button>');}}$('finder-results').innerHTML=rows.length?rows.join(''):'<p class="empty-result">Không tìm thấy bài phù hợp.</p>';};['finder-search','finder-topic','finder-level','finder-field'].forEach(id=>$(id).oninput=filter);$('finder-results').onclick=$('recommendation').onclick=$('recent-list').onclick=e=>{const b=e.target.closest('[data-open-topic]');if(b)openExercise(b.dataset.openTopic,Number(b.dataset.openNumber));};}
+
 function updateLines() {
   const n = $('code').value.split('\n').length;
   $('line-numbers').textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n');
@@ -87,28 +97,29 @@ function renderExamSummary() {
     '<p class="muted">Điểm được tính bằng bộ test chạy trong trình duyệt. Mở từng câu để xem lời giải tham khảo và tự đối chiếu.</p>';
 }
 function render() {
-  const t = topicData[state.topic]; const s = session(); const item = current(); const e = item?.exercise;
+  const t = topicData[state.topic]; const s = session(); const item = current(); const e = item?.exercise; const home = state.topic === 'home';
+  $('dashboard').hidden = !home; ['page-heading','toolbar','notice','theory','exam-intro','exam-bar','workspace','feedback','exam-result','empty'].forEach(id => { $(id).hidden = home; });
   document.querySelectorAll('[data-topic]').forEach(b => { b.classList.toggle('active', b.dataset.topic === state.topic); b.setAttribute('aria-current', b.dataset.topic === state.topic ? 'page' : 'false'); });
   $('title').textContent = t.title + '_';
   $('subtitle').textContent = t.subtitle;
-  $('eyebrow').textContent = state.topic === 'exam' ? 'THI THỬ / KHỐI NGÀNH KINH TẾ' : 'PYTHON / CHỦ ĐỀ ' + String(Object.keys(topicData).indexOf(state.topic) + 1).padStart(2, '0');
+  $('eyebrow').textContent = state.topic === 'exam' ? 'THI THỬ / KHỐI NGÀNH KINH TẾ' : 'PYTHON / CHỦ ĐỀ ' + String(topicKeys.indexOf(state.topic) + 1).padStart(2, '0');
   $('generate').textContent = state.topic === 'exam' ? 'Tạo đề 5 câu ↗' : 'Mở bài ↗';
   $('mode-note').textContent = state.topic === 'exam' ? '5 câu · 60 phút · 10 điểm' : '10 bài soạn sẵn trong chủ đề.';
-  $('exercise-number').hidden = state.topic === 'exam';
+  $('exercise-number').hidden = state.topic === 'exam' || home; $('mode-note').hidden=home; $('generate').hidden=home;
   if (state.topic !== 'exam') {
     const selected = state.exerciseNumbers[state.topic] || 1;
     $('exercise-number').innerHTML = Array.from({ length: 10 }, (_, i) => '<option value="' + (i + 1) + '">Bài ' + String(i + 1).padStart(2, '0') + '</option>').join('');
     $('exercise-number').value = String(selected);
   }
-  $('theory').hidden = state.topic === 'exam';
+  $('theory').hidden = state.topic === 'exam' || home;
   if (t.text) {
     $('theory-tags').textContent = t.tags;
     $('theory-content').innerHTML = '<p>' + escape(t.text) + '</p><pre>' + escape(t.code) + '</pre>';
   }
-  $('exam-intro').hidden = state.topic !== 'exam' || Boolean(s);
-  $('exam-bar').hidden = state.topic !== 'exam' || !s;
-  $('empty').hidden = Boolean(e) || state.topic === 'exam';
-  $('workspace').hidden = !e;
+  $('exam-intro').hidden = home || state.topic !== 'exam' || Boolean(s);
+  $('exam-bar').hidden = home || state.topic !== 'exam' || !s;
+  $('empty').hidden = home || Boolean(e) || state.topic === 'exam';
+  $('workspace').hidden = home || !e;
   $('feedback').hidden = true;
   $('exam-result').hidden = true;
   showStats();
@@ -203,7 +214,7 @@ async function gradeItem(item) {
   $('runtime-status').textContent = 'Đang tính điểm từ bộ test…';
   const grade = await api('grade', { id: item.exercise.id, code: item.code, results: item.results });
   item.grade = grade; item.gradedCode = item.code;
-  state.history.push({ id: item.exercise.id, score: grade.score, topic: item.exercise.topic, at: Date.now() });
+  state.history.push({ id: item.exercise.id, title:item.exercise.title, score: grade.score, topic: item.exercise.topic, at: Date.now() });
   state.history = state.history.slice(-200); save();
   return grade;
 }
@@ -252,6 +263,8 @@ function updateTimer() {
   }
 }
 document.querySelectorAll('[data-topic]').forEach(button => button.onclick = () => { if (busy) return; state.topic = button.dataset.topic; save(); render(); });
+$('start-learning').onclick=()=>openExercise('variables',state.exerciseNumbers.variables||1);
+$('hero-run').onclick=async()=>{const b=$('hero-run'),out=$('hero-output');b.disabled=true;out.textContent='Đang chạy Python…';try{const [r]=await runPython($('hero-code').value,[{input:$('hero-input').value,expected:''}],'script');out.textContent=r.error||r.stdout||'(Không có kết quả)';out.classList.toggle('error',Boolean(r.error));}catch(e){out.textContent=e.message;out.classList.add('error');}finally{b.disabled=false;}};
 $('generate').onclick = generate; $('run').onclick = run; $('submit').onclick = submit; $('hint').onclick = hint;
 $('exercise-number').onchange = () => { state.exerciseNumbers[state.topic] = Number($('exercise-number').value); save(); generate(); };
 $('submit-all').onclick = () => submitAll(); $('cancel-run').onclick = () => cancelRunner?.();
@@ -266,7 +279,8 @@ $('code').addEventListener('keydown', event => {
 });
 $('stdin').oninput = () => { if (current()) { current().stdin = $('stdin').value; save(); } };
 window.addEventListener('pagehide', save);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') save(); });
+window.addEventListener('pagehide',save);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')save();});
 $('reset').onclick = () => {
   if (session()?.ended) return toast('Lượt thi đã kết thúc. Tạo đề mới để luyện tiếp.');
   if (!current() || !confirm('Đặt lại code về phần khởi đầu?')) return;
@@ -277,18 +291,21 @@ $('download').onclick = () => {
   const url = URL.createObjectURL(new Blob([current().code], { type: 'text/x-python;charset=utf-8' }));
   const a = document.createElement('a'); a.href = url; a.download = 'main.py'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
-let theme = localStorage.getItem('hocpython:theme:v2') || 'light';
-document.documentElement.dataset.theme = theme;
-$('theme').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; localStorage.setItem('hocpython:theme:v2', theme); };
+let theme=localStorage.getItem('hocpython:theme:v2')||'light';
+function applyTheme(){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-checked',String(theme==='dark'));$('theme-label').textContent=theme==='dark'?'Giao diện tối':'Giao diện sáng';}
+applyTheme();
+$('theme').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();localStorage.setItem('hocpython:theme:v2',theme);};
 async function init() {
+  if (!localStorage.getItem('hocpython:visited')) { state.topic='home'; localStorage.setItem('hocpython:visited','1'); save(); }
   render();
   try {
     $('connection').textContent = 'bài soạn sẵn · tự chấm';
-    $('notice').hidden = false;
+    $('notice').hidden = state.topic === 'home';
     $('notice').textContent = 'Mỗi chủ đề có 10 bài do mình biên soạn. Chạy và nộp bài được kiểm tra bằng bộ test có sẵn; không cần AI hay API key.';
-    if (!session() && state.topic !== 'exam') await generate();
+    if (!session() && !['exam','home'].includes(state.topic)) await generate();
   } catch (error) { toast(error.message); }
   setInterval(updateTimer, 1000);
 }
 init();
+
 
