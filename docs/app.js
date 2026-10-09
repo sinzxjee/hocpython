@@ -39,7 +39,6 @@ function setBusy(value, label = '') {
   document.querySelectorAll('[data-topic]').forEach(button => button.disabled = value);
   $('code').disabled = value || Boolean(session()?.ended);
   editorInstance?.updateOptions({ readOnly: value || Boolean(session()?.ended) });
-  $('workspace').classList.toggle('is-loading', value && state.topic !== 'home' && !session()?.items?.length);
   if (label) $('runtime-status').textContent = label;
   if (!value) {
     $('runtime-status').textContent = 'Python / sẵn sàng khi chạy';
@@ -72,14 +71,16 @@ function loadMonaco() {
   if (editorInstance) return Promise.resolve(editorInstance);
   if (monacoPromise) return monacoPromise;
   monacoPromise = new Promise((resolve, reject) => {
-    const version = '0.52.2';
-    const base = 'https://cdn.jsdelivr.net/npm/monaco-editor@' + version + '/min/vs';
+    const base = new URL('./vendor/monaco/vs', import.meta.url).href;
     const script = document.createElement('script'); script.src = base + '/loader.js'; script.crossOrigin = 'anonymous';
     script.onerror = () => reject(new Error('Không tải được Monaco; đang dùng editor cơ bản.'));
     script.onload = () => {
       window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob(["self.MonacoEnvironment={baseUrl:'" + base.replace(/\/vs$/, '') + "'};importScripts('" + base + "/base/worker/workerMain.js');"], { type: 'text/javascript' })) };
       window.require.config({ paths: { vs: base } });
-      window.require(['vs/editor/editor.main', 'vs/basic-languages/python/python.contribution'], () => {
+      window.require(['vs/editor/editor.main', 'vs/basic-languages/python/python'], (_editorMain, python) => {
+        window.monaco.languages.register({ id: 'python' });
+        window.monaco.languages.setMonarchTokensProvider('python', python.language);
+        window.monaco.languages.setLanguageConfiguration('python', python.conf);
         const host = $('monaco-editor');
         editorInstance = window.monaco.editor.create(host, {
           value: $('code').value, language: 'python', theme: theme === 'dark' ? 'vs-dark' : 'vs',
@@ -153,7 +154,7 @@ function renderFeedback(item) {
 function renderTests(item) {
   const results = item?.results || [];
   $('checks').hidden = !results.length;
-  $('test-metrics').textContent = results.length ? 'Thời gian chạy: ' + (item.runtimeMs ?? '—') + ' ms · Bộ nhớ: không đo được' : '';
+  $('test-metrics').textContent = results.length ? (item.runtimeMs == null ? 'Thời gian chạy: chưa đo ở lượt này' : 'Thời gian chạy: ' + item.runtimeMs + ' ms') + ' · Bộ nhớ: không đo được' : '';
   $('test-results').innerHTML = results.map((r, i) => '<details class="check"><summary>' + (r.passed ? '✓' : '×') + ' Test ' + String(i + 1).padStart(2, '0') + ' / ' + (r.passed ? 'đạt' : 'chưa đạt') + '</summary><pre>' +
     escape('Đầu vào: ' + (item.tests?.[i]?.expression || item.tests?.[i]?.input || '(rỗng)') + '\nMong đợi: ' + (item.tests?.[i]?.expected || '') + '\nThực tế: ' + r.stdout + (r.error ? '\nLỗi: ' + r.error : '')) + '</pre></details>').join('');
 }
@@ -231,13 +232,14 @@ async function generate() {
   const old = session();
   if (old?.items.some(i => i.code !== i.exercise.starter) && !confirm('Tạo bài mới sẽ thay bài hiện tại trong chủ đề này. Tiếp tục?')) return;
   setBusy(true); $('generate').textContent = state.topic === 'exam' ? 'Đang tạo 5 câu…' : 'Đang tạo bài…';
+  $('workspace').classList.add('is-loading');
   try {
     const response = await api('generate', { topic: state.topic, exam: state.topic === 'exam', exerciseNumber: Number($('exercise-number').value) });
     state.sessions[state.topic] = { items: response.exercises.map(itemFrom), index: 0, deadline: state.topic === 'exam' ? Date.now() + 3600000 : null, ended: false, submitted: false };
     if (state.topic !== 'exam') state.exerciseNumbers[state.topic] = Number($('exercise-number').value);
     save(); render();
     toast(state.topic === 'exam' ? 'Đề đã sẵn sàng. Đồng hồ bắt đầu.' : 'Bài mới đã sẵn sàng.');
-  } catch (error) { toast(error.message); } finally { setBusy(false); }
+  } catch (error) { toast(error.message); } finally { $('workspace').classList.remove('is-loading'); setBusy(false); }
 }
 function runPython(code, tests, mode) {
   return new Promise((resolve, reject) => {
