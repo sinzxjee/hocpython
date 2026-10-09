@@ -1,5 +1,7 @@
 # hocpython
 
+Luyện trực tuyến: **https://sinzxjee.github.io/hocpython/**
+
 Web luyện Python cho sinh viên khối ngành kinh tế với 5 chủ đề: biến/toán tử, dữ liệu tuần tự, điều kiện, vòng lặp và hàm.
 
 - UI mono đơn sắc, sáng/tối, responsive; không framework hoặc font tải ngoài.
@@ -23,7 +25,7 @@ Mở **http://127.0.0.1:3000**. Có thể dùng `npm start` nếu máy có npm.
 
 ## Chạy trên hosting
 
-Đặt `HOST=0.0.0.0` trên hosting hỗ trợ Node.js. GitHub Pages không chạy máy chủ Node. Web không cần API key hoặc tài khoản AI.
+Đặt `HOST=0.0.0.0` trên hosting hỗ trợ Node.js. Bản GitHub Pages chạy hoàn toàn trong trình duyệt, không cần máy chủ Node, API key hoặc tài khoản AI. Chạy `node scripts/build-pages.mjs` sau khi sửa `public/` để cập nhật thư mục `docs/`; Pages lấy nguồn từ `main /docs`.
 
 Có Dockerfile để chạy trên hosting hỗ trợ container:
 

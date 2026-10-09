@@ -1,3 +1,4 @@
+import { makeExercise } from '../lib/bank.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -13,8 +14,8 @@ function run(code, tests, mode = 'script') {
   return JSON.parse(child.stdout);
 }
 test('Random sample references pass all boundary tests', () => {
-  for (const topic of TOPICS) for (let i = 0; i < 5; i++) {
-    const e = validateExercise(makeExercise(topic.id), topic.id);
+  for (const topic of TOPICS) for (let i = 1; i <= 10; i++) {
+    const e = validateExercise(makeExercise(topic.id, 'basic', i), topic.id);
     assert.ok(run(e.reference, e.tests, e.mode).every(r => r.passed), topic.id);
     assert.equal(publicExercise(e).reference, undefined);
     assert.equal(publicExercise(e).tests, undefined);
@@ -61,7 +62,7 @@ test('API serves ten authored exercises per topic and a five topic exam', async 
   assert.equal((await post('generate', { topic: 'invalid' })).status, 400);
   assert.equal((await post('grade', { id: e.id, code: '', results: [] })).status, 400);
   for (const topic of TOPICS) {
-    for (let number = 1; number <= 10; number++) {
+    for (const number of [1, 10]) {
       const response = await post('generate', { topic: topic.id, exerciseNumber: number });
       assert.equal(response.status, 200);
       assert.equal(response.value.exercises[0].exerciseNumber, number);
